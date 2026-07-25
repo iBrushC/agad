@@ -15,7 +15,7 @@ Write exactly one file: **`/home/vercel-sandbox/project/index.html`**
 - All CSS inline in a `<style>` tag in `<head>`.
 - No external CSS or JS files; only inline `<script>` tags if absolutely necessary.
 - Fonts: only Google Fonts `<link>` tags from the curated list below, OR system fonts.
-- Images: prefer inline SVG. If you need a raster image, use `https://images.unsplash.com/...` or `https://picsum.photos/...`.
+- Images: prefer inline SVG. If you need a raster image (hero photo, product shot, illustration), use the `image-generation` skill — it can call OpenRouter and write the file into `project/assets/`. Otherwise, fall back to `https://images.unsplash.com/...` or `https://picsum.photos/...`.
 - **Animation: use Motion.** `motion` is installed at `/home/vercel-sandbox/project/node_modules/motion/`. Inline the bits you need, or load via `<script type="module">` from a CDN copy. Do not `npm install` anything else — only `motion` is pre-installed.
 - No tracking scripts, no analytics, no third-party JS (motion is fine; it's animation only).
 
@@ -49,6 +49,7 @@ Or use system stack `-apple-system, "Segoe UI", Roboto, sans-serif` if you want 
    - `shadcn-ui` — if the page uses structured components (forms, feature cards, pricing).
    - `visual-primitives` — for hero set-pieces, gradients, marquees, bento grids.
    - `motion-budget` — for any animation. Caps durations, easing, max two scroll effects.
+   - `image-generation` — for any raster image the page actually needs (hero photo, product shot, illustration). Never use this for icons or logos.
    - `stack-picker` — if unsure which approach to use.
    - `visual-self-review` — for the final pass before declaring done.
    - `supabase`, `supabase-postgres-best-practices` — for any data persistence layer (rare in landing pages; ignore unless asked).

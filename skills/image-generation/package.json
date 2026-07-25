@@ -1,0 +1,11 @@
+{
+  "name": "agad-image-generation-skill",
+  "version": "1.0.0",
+  "type": "module",
+  "private": true,
+  "description": "OpenRouter image generation helper for the AGAD opencode agent",
+  "main": "scripts/generate.mjs",
+  "dependencies": {
+    "@openrouter/sdk": "^0.2.4"
+  }
+}

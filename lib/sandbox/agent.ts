@@ -5,6 +5,7 @@ import {
   OPENCODE_PORT,
   PROJECT_INDEX_HTML,
   basicAuthHeader,
+  installImageGenerationSkill,
   installMotion,
   installOpenCode,
   lockDownEgress,
@@ -13,6 +14,7 @@ import {
   waitForOpenCodeHealthy,
   readOpenCodeLog,
   writeOpenCodeConfig,
+  writeOpenCodeSecrets,
 } from "./opencode";
 import { syncSkills } from "./skills";
 import * as state from "./state";
@@ -80,6 +82,8 @@ async function runCreatePipeline(userId: string): Promise<AgentState> {
           state.setStatus(userId, "installing");
           await installOpenCode(sbx);
           await writeOpenCodeAssets(sbx);
+          await writeOpenCodeSecrets(sbx, readOpenRouterKey());
+          await installImageGenerationSkill(sbx);
           await installMotion(sbx);
         },
       });
@@ -88,6 +92,8 @@ async function runCreatePipeline(userId: string): Promise<AgentState> {
     state.setStatus(userId, "installing");
     await installOpenCode(sandbox);
     await writeOpenCodeAssets(sandbox);
+    await writeOpenCodeSecrets(sandbox, readOpenRouterKey());
+    await installImageGenerationSkill(sandbox);
     await installMotion(sandbox);
   }
 
@@ -222,20 +228,17 @@ export async function getAgentState(userId: string): Promise<AgentState | null> 
   return state.read(userId);
 }
 
-export async function tailAgentLogs(
-  userId: string,
-): Promise<{ stream: ReadableStream<Uint8Array> | null; reachedHead: boolean }> {
+export async function readAgentLogs(userId: string): Promise<string | null> {
   const current = state.get(userId);
   if (!current.sandboxName) {
-    return { stream: null, reachedHead: false };
+    return null;
   }
   try {
     const sandbox = await Sandbox.get({ name: current.sandboxName });
-    const file = await sandbox.readFile({ path: "/tmp/opencode.log" });
-    if (!file) return { stream: null, reachedHead: false };
-    return { stream: file as unknown as ReadableStream<Uint8Array>, reachedHead: true };
+    const buf = await sandbox.readFileToBuffer({ path: "/tmp/opencode.log" });
+    return buf ? buf.toString("utf8") : null;
   } catch {
-    return { stream: null, reachedHead: false };
+    return null;
   }
 }
 
@@ -259,9 +262,12 @@ export async function proxyToOpenCode(
   const init: RequestInit = {
     method: request.method,
     headers,
-    body: ["GET", "HEAD"].includes(request.method) ? undefined : request.body,
     redirect: "manual",
   };
+  if (!["GET", "HEAD"].includes(request.method)) {
+    init.body = request.body;
+    (init as RequestInit & { duplex: "half" }).duplex = "half";
+  }
   return fetch(target, init);
 }
 
@@ -280,6 +286,8 @@ export async function snapshotOpenCodeBaseSandbox(): Promise<{
     });
     await installOpenCode(sandbox);
     await writeOpenCodeAssets(sandbox);
+    await writeOpenCodeSecrets(sandbox, readOpenRouterKey());
+    await installImageGenerationSkill(sandbox);
     await installMotion(sandbox);
     const snap = await sandbox.snapshot();
     return { ok: true, snapshotId: snap.snapshotId };

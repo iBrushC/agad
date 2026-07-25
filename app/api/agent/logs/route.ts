@@ -1,4 +1,4 @@
-import { tailAgentLogs } from "@/lib/sandbox/agent";
+import { readAgentLogs } from "@/lib/sandbox/agent";
 import { getUserId } from "@/lib/supabase/user";
 
 export const dynamic = "force-dynamic";
@@ -9,36 +9,22 @@ export async function GET() {
     return new Response("unauthorized", { status: 401 });
   }
 
-  const { stream } = await tailAgentLogs(userId);
-  if (!stream) {
+  const content = await readAgentLogs(userId);
+  if (content === null) {
     return new Response("no logs", { status: 404 });
   }
 
   const encoder = new TextEncoder();
   return new Response(
     new ReadableStream({
-      async start(controller) {
+      start(controller) {
         controller.enqueue(encoder.encode(`: connected\n\n`));
-        const reader = stream.getReader();
-        try {
-          while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
-            const text = typeof value === "string" ? value : new TextDecoder().decode(value);
-            for (const line of text.split("\n")) {
-              controller.enqueue(encoder.encode(`data: ${line}\n\n`));
-            }
-          }
-        } catch (err) {
-          controller.enqueue(
-            encoder.encode(
-              `event: error\ndata: ${err instanceof Error ? err.message : "stream error"}\n\n`,
-            ),
-          );
-        } finally {
-          controller.enqueue(encoder.encode(`event: end\ndata: done\n\n`));
-          controller.close();
+        const lines = content.split("\n");
+        for (const line of lines) {
+          controller.enqueue(encoder.encode(`data: ${line}\n\n`));
         }
+        controller.enqueue(encoder.encode(`event: end\ndata: done\n\n`));
+        controller.close();
       },
     }),
     {

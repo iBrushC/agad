@@ -70,11 +70,12 @@ export async function startOpenCodeServer(
     args: [
       "-c",
       [
-        `pkill -f '${OPENCODE_BIN} serve' 2>/dev/null`,
+        `pgrep -x opencode 2>/dev/null | grep -v "^$$\\$" | xargs -r kill -9`,
         `sleep 1`,
         `rm -rf ~/.local/share/opencode ~/.config/opencode`,
         `rm -f ${OPENCODE_LOG_PATH}`,
-        `OPENCODE_SERVER_PASSWORD=${password} nohup ${OPENCODE_BIN} serve --hostname 0.0.0.0 --port ${OPENCODE_PORT} </dev/null >${OPENCODE_LOG_PATH} 2>&1 & disown`,
+        `echo "$(date -Is) [agent] wrapper launched HOME=$HOME" >> ${OPENCODE_LOG_PATH}`,
+        `OPENCODE_SERVER_PASSWORD=${password} OPENCODE_LOG_LEVEL=DEBUG nohup ${OPENCODE_BIN} serve --hostname 0.0.0.0 --port ${OPENCODE_PORT} </dev/null >>${OPENCODE_LOG_PATH} 2>&1 & disown`,
       ].join("; "),
     ],
     env: { OPENCODE_SERVER_PASSWORD: password },
@@ -161,6 +162,63 @@ export async function ensureProjectDir(sandbox: Sandbox): Promise<void> {
     cmd: "bash",
     args: ["-c", `mkdir -p ${PROJECT_DIR}`],
   });
+}
+
+const IMAGE_GEN_SKILL_DIR = `/home/vercel-sandbox/.config/opencode/skills/image-generation`;
+const IMAGE_GEN_BOOTSTRAP_MARKER = `${IMAGE_GEN_SKILL_DIR}/.bootstrapped`;
+const OPENCODE_SECRETS_FILE = `/home/vercel-sandbox/.config/opencode/secrets.env`;
+
+export async function writeOpenCodeSecrets(
+  sandbox: Sandbox,
+  openRouterApiKey: string,
+): Promise<void> {
+  const content = `OPENROUTER_API_KEY=${openRouterApiKey}\n`;
+  await sandbox.writeFiles([
+    { path: OPENCODE_SECRETS_FILE, content: Buffer.from(content), mode: 0o600 },
+  ]);
+  await sandbox.runCommand("chmod", ["600", OPENCODE_SECRETS_FILE]);
+}
+
+export async function installImageGenerationSkill(sandbox: Sandbox): Promise<void> {
+  const marker = await sandbox.runCommand({
+    cmd: "bash",
+    args: [
+      "-c",
+      `test -f ${IMAGE_GEN_BOOTSTRAP_MARKER} && test -d ${IMAGE_GEN_SKILL_DIR}/node_modules/@openrouter/sdk && echo OK || echo MISSING`,
+    ],
+  });
+  const out = await marker.stdout();
+  if (out.includes("OK")) return;
+
+  const hasPkg = await sandbox.runCommand({
+    cmd: "bash",
+    args: ["-c", `test -f ${IMAGE_GEN_SKILL_DIR}/package.json && echo OK || echo MISSING`],
+  });
+  const hasPkgOut = await hasPkg.stdout();
+  if (!hasPkgOut.includes("OK")) {
+    console.warn(`[agent] image-generation skill not present at ${IMAGE_GEN_SKILL_DIR}; skipping install`);
+    return;
+  }
+
+  const install = await sandbox.runCommand({
+    cmd: "bash",
+    args: [
+      "-c",
+      `cd ${IMAGE_GEN_SKILL_DIR} && npm install --no-audit --no-fund --omit=dev 2>&1 | tail -n 20`,
+    ],
+  });
+  if (install.exitCode !== 0) {
+    const err = await install.stderr();
+    throw new Error(`image-generation skill install failed: ${err.slice(0, 500)}`);
+  }
+
+  const stamp = await sandbox.runCommand({
+    cmd: "bash",
+    args: ["-c", `date -u +%Y-%m-%dT%H:%M:%SZ > ${IMAGE_GEN_BOOTSTRAP_MARKER}`],
+  });
+  if (stamp.exitCode !== 0) {
+    throw new Error("failed to write image-generation bootstrap marker");
+  }
 }
 
 export async function installMotion(sandbox: Sandbox): Promise<void> {
