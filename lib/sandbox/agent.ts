@@ -105,7 +105,8 @@ async function runCreatePipeline(userId: string): Promise<AgentState> {
   console.log(`[agent] opencode healthy=${healthy} userId=${userId} lastError=${lastError ?? "<none>"}`);
   if (!healthy) {
     const log = await readOpenCodeLog(sandbox);
-    const detail = `opencode server did not become healthy: ${lastError ?? "timeout"}; log tail: ${log || "<empty>"}`;
+    console.error(`[agent] opencode diagnostics userId=${userId}\n${log}`);
+    const detail = `opencode server did not become healthy: ${lastError ?? "timeout"}\n${log || "<no diagnostics captured>"}`;
     state.setError(userId, detail);
     throw new Error(detail);
   }

@@ -68,8 +68,14 @@ export async function startOpenCodeServer(
   await sandbox.runCommand({
     cmd: "bash",
     args: [
-      "-lc",
-      `: > ${OPENCODE_LOG_PATH}; OPENCODE_SERVER_PASSWORD=${password} exec ${OPENCODE_BIN} serve --hostname 0.0.0.0 --port ${OPENCODE_PORT} >> ${OPENCODE_LOG_PATH} 2>&1`,
+      "-c",
+      [
+        `pkill -f '${OPENCODE_BIN} serve' 2>/dev/null`,
+        `sleep 1`,
+        `rm -rf ~/.local/share/opencode ~/.config/opencode`,
+        `rm -f ${OPENCODE_LOG_PATH}`,
+        `OPENCODE_SERVER_PASSWORD=${password} nohup ${OPENCODE_BIN} serve --hostname 0.0.0.0 --port ${OPENCODE_PORT} </dev/null >${OPENCODE_LOG_PATH} 2>&1 & disown`,
+      ].join("; "),
     ],
     env: { OPENCODE_SERVER_PASSWORD: password },
     detached: true,
@@ -78,10 +84,27 @@ export async function startOpenCodeServer(
 
 export async function readOpenCodeLog(sandbox: Sandbox, maxBytes = 4000): Promise<string> {
   try {
-    const buf = await sandbox.readFileToBuffer({ path: OPENCODE_LOG_PATH });
-    if (!buf) return "";
-    const text = buf.toString("utf8");
-    return text.length > maxBytes ? text.slice(-maxBytes) : text;
+    const diag = await sandbox.runCommand({
+      cmd: "bash",
+      args: [
+        "-c",
+        [
+          `echo '--- pgrep ---'`,
+          `pgrep -af opencode || echo '<no opencode processes>'`,
+          `echo '--- listeners ---'`,
+          `(ss -ltnp 2>/dev/null || netstat -ltnp 2>/dev/null) | head -n 50 || echo '<no ss/netstat>'`,
+          `echo '--- HOME ---'`,
+          `echo "HOME=$HOME"`,
+          `ls -la ~/.local/share/opencode 2>/dev/null || echo '<no ~/.local/share/opencode>'`,
+          `echo '--- /tmp/opencode.log (tail) ---'`,
+          `tail -c ${maxBytes} ${OPENCODE_LOG_PATH} 2>/dev/null || echo '<empty>'`,
+          `echo '--- ~/.local/share/opencode/log/*.log (tail) ---'`,
+          `tail -c ${maxBytes} ~/.local/share/opencode/log/*.log 2>/dev/null || echo '<none>'`,
+        ].join("\n"),
+      ],
+    });
+    const out = await diag.stdout();
+    return out || "";
   } catch {
     return "";
   }

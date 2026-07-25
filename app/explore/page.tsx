@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import Link from "next/link";
 import ExploreGrid from "../components/ExploreGrid/ExploreGrid";
 
 export default function ExplorePage() {
@@ -16,6 +17,28 @@ export default function ExplorePage() {
 
   return (
     <div className="flex h-screen w-full flex-col bg-[var(--background)]">
+      <nav className="flex shrink-0 items-center justify-between border-b border-[var(--border)] px-8 py-3">
+        <Link
+          href="/design"
+          className="text-sm font-semibold tracking-[0.18em] uppercase text-[var(--foreground)]"
+        >
+          agad
+        </Link>
+        <div className="flex items-center gap-6 text-sm">
+          <Link
+            href="/design"
+            className="text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)]"
+          >
+            Design
+          </Link>
+          <Link
+            href="/explore"
+            className="font-medium text-[var(--foreground)]"
+          >
+            Explore
+          </Link>
+        </div>
+      </nav>
       <header
         className="flex shrink-0 items-center border-b border-[var(--border)] px-8"
         style={{ height: "20%" }}
