@@ -13,7 +13,7 @@ export default async function DesignPage() {
       <div className="min-w-0 flex-1">
         <Workspace />
       </div>
-      <aside className="w-[360px] shrink-0 border-l border-border bg-panel">
+      <aside className="shrink-0 border-l border-border bg-panel">
         <OpenAgentPanel />
       </aside>
     </div>

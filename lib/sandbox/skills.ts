@@ -1,7 +1,10 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
 
-const SKILLS_DIR = path.join(process.cwd(), "skills");
+const SKILL_ROOTS = [
+  path.join(process.cwd(), "skills"),
+  path.join(process.cwd(), ".agents", "skills"),
+];
 export const OPENCODE_SKILLS_DIR = "/home/vercel-sandbox/.config/opencode/skills";
 
 export type SkillFile = {
@@ -34,7 +37,9 @@ async function walk(
 
 export async function loadSkills(): Promise<SkillFile[]> {
   const files: { abs: string; rel: string }[] = [];
-  await walk(SKILLS_DIR, "", files);
+  for (const root of SKILL_ROOTS) {
+    await walk(root, "", files);
+  }
   const out: SkillFile[] = [];
   for (const f of files) {
     const content = await fs.readFile(f.abs);

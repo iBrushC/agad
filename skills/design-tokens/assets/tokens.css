@@ -1,0 +1,253 @@
+/* ============================================================
+   tokens.css — drop-in design system layer
+   Change the four values in [1] and everything else follows.
+   Tailwind v4: move the :root contents into @theme { } and they
+   become utilities (bg-surface, text-muted, p-8 …) automatically.
+   ============================================================ */
+
+:root {
+  /* [1] THE FOUR DECISIONS -------------------------------------- */
+  --hue-accent: 24;          /* accent hue, 0–360 */
+  --hue-neutral: 24;         /* tint the greys toward the accent (or its complement) */
+  --ratio: 1.25;             /* type scale ratio: 1.2 dense · 1.25 general · 1.333 editorial */
+  --radius: 10px;            /* one radius for the whole page */
+
+  /* [2] COLOR — OKLCH: hold chroma + hue, vary lightness ---------
+     Neutrals carry a whisper of the accent hue (c=0.008–0.02) so the
+     page coheres. Pure grey next to a saturated accent reads dead.  */
+  --n-50:  oklch(98.5% 0.006 var(--hue-neutral));
+  --n-100: oklch(96%   0.008 var(--hue-neutral));
+  --n-200: oklch(91%   0.010 var(--hue-neutral));
+  --n-300: oklch(84%   0.012 var(--hue-neutral));
+  --n-400: oklch(70%   0.014 var(--hue-neutral));
+  --n-500: oklch(56%   0.016 var(--hue-neutral));
+  --n-600: oklch(44%   0.018 var(--hue-neutral));
+  --n-700: oklch(34%   0.018 var(--hue-neutral));
+  --n-800: oklch(24%   0.016 var(--hue-neutral));
+  --n-900: oklch(16%   0.014 var(--hue-neutral));
+  --n-950: oklch(11%   0.012 var(--hue-neutral));
+
+  --accent:       oklch(62% 0.17 var(--hue-accent));
+  --accent-hover: oklch(56% 0.18 var(--hue-accent));
+  --accent-soft:  oklch(94% 0.04 var(--hue-accent));
+  --accent-text:  oklch(98% 0.01 var(--hue-accent));
+
+  /* semantic surfaces — reference these in components, not the ramp */
+  --bg:       var(--n-50);
+  --surface:  #fff;
+  --border:   var(--n-200);
+  --text:     var(--n-900);
+  --text-mute:var(--n-600);
+  --text-dim: var(--n-500);
+
+  /* [3] TYPE ----------------------------------------------------
+     Fluid via clamp so nothing needs a media query. Every size on
+     the ladder; never invent an off-ladder value.                 */
+  --font-display: 'Clash Display', 'Instrument Serif', ui-serif, Georgia, serif;
+  --font-body:    'Satoshi', 'Inter', ui-sans-serif, system-ui, sans-serif;
+  --font-mono:    'JetBrains Mono', ui-monospace, 'SF Mono', monospace;
+
+  --t--1: clamp(0.78rem, 0.76rem + 0.10vw, 0.84rem);  /* captions, labels */
+  --t-0:  clamp(1.00rem, 0.97rem + 0.15vw, 1.09rem);  /* body */
+  --t-1:  clamp(1.20rem, 1.13rem + 0.35vw, 1.42rem);  /* lead */
+  --t-2:  clamp(1.44rem, 1.30rem + 0.70vw, 1.90rem);  /* h3 */
+  --t-3:  clamp(1.73rem, 1.47rem + 1.30vw, 2.60rem);  /* h2 */
+  --t-4:  clamp(2.07rem, 1.60rem + 2.35vw, 3.80rem);  /* h1 */
+  --t-5:  clamp(2.49rem, 1.60rem + 4.45vw, 5.60rem);  /* display */
+
+  --lh-tight: 0.98;   /* --t-4 and up */
+  --lh-snug:  1.20;   /* headings */
+  --lh-body:  1.58;   /* paragraphs */
+  --ls-tight: -0.03em;
+  --ls-wide:  0.09em;
+
+  /* [4] SPACE — 4px base. The big steps are what make it look designed. */
+  --s-1: 4px;   --s-2: 8px;   --s-3: 12px;  --s-4: 16px;
+  --s-5: 24px;  --s-6: 32px;  --s-7: 48px;  --s-8: 64px;
+  --s-9: 96px;  --s-10: 128px; --s-11: 176px;
+
+  --section-y: clamp(var(--s-8), 9vw, var(--s-11));
+  --measure: 68ch;                 /* max line length for body copy */
+  --container: 1180px;
+  --gutter: clamp(var(--s-4), 5vw, var(--s-8));
+
+  /* [5] DEPTH — pick borders OR shadows, not both at random. */
+  --shadow-1: 0 1px 2px oklch(0% 0 0 / 0.04), 0 2px 8px oklch(0% 0 0 / 0.05);
+  --shadow-2: 0 2px 4px oklch(0% 0 0 / 0.04), 0 12px 32px oklch(0% 0 0 / 0.08);
+  --ring: 0 0 0 3px oklch(62% 0.17 var(--hue-accent) / 0.35);
+
+  /* [6] MOTION — see the motion-budget skill. */
+  --dur-fast: 140ms;
+  --dur:      240ms;
+  --dur-slow: 420ms;
+  --ease:      cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-out:  cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg:        var(--n-950);
+    --surface:   var(--n-900);
+    --border:    var(--n-800);
+    --text:      var(--n-100);
+    --text-mute: var(--n-400);
+    --text-dim:  var(--n-500);
+    --accent-soft: oklch(28% 0.06 var(--hue-accent));
+  }
+}
+
+/* ============================================================
+   BASE
+   ============================================================ */
+
+*, *::before, *::after { box-sizing: border-box; }
+* { margin: 0; }
+
+html { -webkit-text-size-adjust: 100%; scroll-behavior: smooth; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-body);
+  font-size: var(--t-0);
+  line-height: var(--lh-body);
+  font-synthesis-weight: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1, h2, h3 {
+  font-family: var(--font-display);
+  line-height: var(--lh-snug);
+  letter-spacing: var(--ls-tight);
+  text-wrap: balance;              /* kills headline widows */
+}
+h1 { font-size: var(--t-4); line-height: var(--lh-tight); }
+h2 { font-size: var(--t-3); }
+h3 { font-size: var(--t-2); }
+
+p, li { text-wrap: pretty; }
+p { max-width: var(--measure); }
+
+img, svg, video { display: block; max-width: 100%; height: auto; }
+
+/* the eyebrow / kicker — small caps label above a heading */
+.eyebrow {
+  font-family: var(--font-mono);
+  font-size: var(--t--1);
+  letter-spacing: var(--ls-wide);
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+/* ============================================================
+   LAYOUT
+   ============================================================ */
+
+.container {
+  width: min(100% - var(--gutter) * 2, var(--container));
+  margin-inline: auto;
+}
+
+/* Vary this per section. Uniform section padding is the #1 rhythm tell. */
+.section       { padding-block: var(--section-y); }
+.section--tight{ padding-block: calc(var(--section-y) * 0.55); }
+.section--tall { padding-block: calc(var(--section-y) * 1.5); }
+
+/* auto-responsive grid without media queries */
+.grid-auto {
+  display: grid;
+  gap: var(--s-6);
+  grid-template-columns: repeat(auto-fit, minmax(min(280px, 100%), 1fr));
+}
+
+/* ============================================================
+   GRAIN — the highest impact-per-byte thing in this file.
+   Put it over any gradient or flat background. 3–6% opacity.
+   ============================================================ */
+
+.grain::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 1;
+  opacity: 0.045;
+  mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+/* a gradient worth putting grain on — soft, off-axis, low contrast */
+.gradient-warm {
+  position: relative;
+  background:
+    radial-gradient(80% 60% at 15% 0%,  oklch(88% 0.09 var(--hue-accent)) 0%, transparent 60%),
+    radial-gradient(70% 70% at 90% 20%, oklch(85% 0.07 calc(var(--hue-accent) + 60)) 0%, transparent 55%),
+    var(--bg);
+}
+
+/* ============================================================
+   INTERACTIVE — focus and hover are craft, not compliance
+   ============================================================ */
+
+:focus-visible {
+  outline: none;
+  box-shadow: var(--ring);
+  border-radius: calc(var(--radius) * 0.6);
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+  padding: var(--s-3) var(--s-5);
+  border: 0;
+  border-radius: var(--radius);
+  background: var(--accent);
+  color: var(--accent-text);
+  font: inherit;
+  font-weight: 560;
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease),
+              transform var(--dur-fast) var(--ease);
+}
+.btn:hover  { background: var(--accent-hover); }
+.btn:active { transform: translateY(1px); }
+
+.btn--ghost {
+  background: transparent;
+  color: var(--text);
+  box-shadow: inset 0 0 0 1px var(--border);
+}
+.btn--ghost:hover { background: var(--n-100); }
+
+.card {
+  padding: var(--s-6);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: inset 0 0 0 1px var(--border);
+  transition: box-shadow var(--dur) var(--ease),
+              transform var(--dur) var(--ease-out);
+}
+.card:hover {
+  transform: translateY(-2px);
+  box-shadow: inset 0 0 0 1px var(--n-300), var(--shadow-2);
+}
+
+::selection { background: var(--accent); color: var(--accent-text); }
+
+/* ============================================================
+   REDUCED MOTION — non-negotiable. Note this does not hide
+   content: any entrance animation must have a visible end state.
+   ============================================================ */
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

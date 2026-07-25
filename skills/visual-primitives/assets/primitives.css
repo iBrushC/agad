@@ -1,0 +1,205 @@
+/* ============================================================
+   primitives.css — surface texture + set-pieces, no dependencies
+   ============================================================ */
+
+/* ---------- GRAIN -------------------------------------------
+   Over any gradient, image, or solid. 3–6% opacity.
+   baseFrequency: higher = finer. 0.85 reads as film grain,
+   0.4 reads as coarse paper.
+   ------------------------------------------------------------ */
+
+.grain { position: relative; isolation: isolate; }
+
+.grain::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  opacity: 0.045;
+  mix-blend-mode: overlay;                 /* soft-light on dark backgrounds */
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+.grain--dark::after  { mix-blend-mode: soft-light; opacity: 0.07; }
+.grain--paper::after { opacity: 0.08; background-size: 200px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.42' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E"); }
+
+/* animated grain — use sparingly, it costs repaints */
+@media (prefers-reduced-motion: no-preference) {
+  .grain--live::after { animation: grain-shift 0.7s steps(3) infinite; }
+}
+@keyframes grain-shift {
+  0%   { transform: translate(0, 0); }
+  33%  { transform: translate(-2%, 1%); }
+  66%  { transform: translate(1%, -2%); }
+}
+
+
+/* ---------- SHADER HERO SHELL ------------------------------- */
+
+.shader-hero {
+  position: relative;
+  isolation: isolate;
+  min-height: min(88svh, 900px);
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  background: #141026;                     /* matches colors[0]; prevents a white flash */
+}
+.shader-hero canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: -1;
+}
+.shader-hero__content {
+  position: relative;
+  z-index: 1;
+  width: min(100% - 2rem, 1100px);
+  color: #fff;
+  /* legibility over a moving background — cheaper and better than a dark overlay */
+  text-shadow: 0 1px 40px rgb(0 0 0 / 0.35);
+}
+/* if contrast still fails the review, add this rather than dimming the shader */
+.shader-hero--scrim::before {
+  content: "";
+  position: absolute; inset: 0; z-index: 0;
+  background: linear-gradient(180deg, rgb(0 0 0 / 0.35), transparent 45%, rgb(0 0 0 / 0.45));
+}
+
+
+/* ---------- SPOTLIGHT CARD ----------------------------------
+   <div class="spotlight" data-spotlight> … </div>
+   JS below sets --mx / --my. Best on dark surfaces.
+   ------------------------------------------------------------ */
+
+.spotlight {
+  position: relative;
+  border-radius: var(--radius, 12px);
+  background: var(--surface, #16151c);
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.07);
+  overflow: hidden;
+  transition: box-shadow 240ms ease;
+}
+.spotlight::before {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 300ms ease;
+  background: radial-gradient(
+    320px circle at var(--mx, 50%) var(--my, 50%),
+    color-mix(in oklch, var(--accent, #e0a37a) 26%, transparent),
+    transparent 62%
+  );
+}
+.spotlight:hover::before { opacity: 1; }
+.spotlight > * { position: relative; z-index: 1; }
+
+
+/* ---------- EDGE FADE / GRADIENT MASK -----------------------
+   For anything that overflows: marquees, scrolling lists, tables.
+   Its absence is what makes overflow look broken.
+   ------------------------------------------------------------ */
+
+.fade-x {
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 6%, #000 94%, transparent);
+          mask-image: linear-gradient(90deg, transparent, #000 6%, #000 94%, transparent);
+}
+.fade-y {
+  -webkit-mask-image: linear-gradient(180deg, #000 70%, transparent);
+          mask-image: linear-gradient(180deg, #000 70%, transparent);
+}
+
+
+/* ---------- MARQUEE ----------------------------------------
+   <div class="marquee fade-x"><div class="marquee__track">
+     <ul class="marquee__row">…</ul>
+     <ul class="marquee__row" aria-hidden="true">…duplicate…</ul>
+   </div></div>
+   ------------------------------------------------------------ */
+
+.marquee { overflow: hidden; }
+.marquee__track {
+  display: flex;
+  width: max-content;
+  animation: marquee-slide var(--marquee-dur, 34s) linear infinite;
+}
+.marquee__row {
+  display: flex;
+  align-items: center;
+  gap: var(--s-7, 48px);
+  padding-inline: var(--s-6, 32px);
+  margin: 0;
+  list-style: none;
+}
+.marquee:hover .marquee__track { animation-play-state: paused; }
+.marquee--reverse .marquee__track { animation-direction: reverse; }
+
+@keyframes marquee-slide { to { transform: translateX(-50%); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .marquee__track { animation: none; }
+  .marquee { overflow-x: auto; }
+}
+
+
+/* ---------- BENTO GRID -------------------------------------
+   Deliberately uneven. Equal cards in a 3-column grid is the
+   look this is meant to replace.
+   ------------------------------------------------------------ */
+
+.bento {
+  display: grid;
+  gap: var(--s-4, 16px);
+  grid-template-columns: repeat(2, 1fr);
+  grid-auto-rows: minmax(180px, auto);
+}
+@media (min-width: 900px) {
+  .bento { grid-template-columns: repeat(4, 1fr); }
+  .bento > .b-wide  { grid-column: span 2; }
+  .bento > .b-tall  { grid-row: span 2; }
+  .bento > .b-hero  { grid-column: span 2; grid-row: span 2; }
+  .bento > .b-full  { grid-column: 1 / -1; }
+}
+
+
+/* ---------- HAIRLINE / GRADIENT BORDER ---------------------- */
+
+.hairline-grad {
+  position: relative;
+  background: var(--surface, #fff);
+  border-radius: var(--radius, 12px);
+}
+.hairline-grad::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  padding: 1px;
+  border-radius: inherit;
+  background: linear-gradient(140deg,
+    color-mix(in oklch, var(--accent, #e0a37a) 60%, transparent),
+    transparent 40%,
+    color-mix(in oklch, var(--accent, #e0a37a) 20%, transparent));
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+          mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+          mask-composite: exclude;
+  pointer-events: none;
+}
+
+
+/* ---------- SCRIPT: spotlight + magnetic -------------------- 
+
+document.querySelectorAll("[data-spotlight]").forEach((el) => {
+  el.addEventListener("pointermove", (e) => {
+    const r = el.getBoundingClientRect();
+    el.style.setProperty("--mx", `${e.clientX - r.left}px`);
+    el.style.setProperty("--my", `${e.clientY - r.top}px`);
+  });
+});
+
+--------------------------------------------------------------- */

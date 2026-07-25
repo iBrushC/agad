@@ -11,6 +11,8 @@ import {
   KeyRound,
   Copy,
   RefreshCw,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 
 type AgentStatus =
@@ -51,6 +53,7 @@ export default function OpenAgentPanel() {
   const [logs, setLogs] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const [copied, setCopied] = useState<"url" | "password" | null>(null);
+  const [open, setOpen] = useState(false);
   const logsRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -165,7 +168,57 @@ export default function OpenAgentPanel() {
   const isReady = status === "ready";
 
   return (
-    <section className="flex h-full flex-col bg-panel">
+    <aside className="flex h-full">
+      {open ? (
+        <button
+          type="button"
+          onClick={() => setOpen(false)}
+          aria-label="Collapse agent runtime"
+          aria-expanded={true}
+          className="flex w-6 shrink-0 flex-col items-center justify-start gap-2 border-r border-border bg-panel py-3 text-muted-foreground hover:text-foreground"
+        >
+          <ChevronRight className="size-3.5" />
+          <span
+            className={`inline-block size-1.5 ${
+              isReady
+                ? "bg-emerald-500"
+                : isWorking
+                  ? "bg-amber-500 animate-pulse"
+                  : "bg-muted-foreground"
+            }`}
+          />
+        </button>
+      ) : (
+        <button
+          type="button"
+          onClick={() => setOpen(true)}
+          aria-label="Expand agent runtime"
+          aria-expanded={false}
+          className="flex w-6 shrink-0 flex-col items-center justify-center gap-2 border-r border-border bg-panel text-muted-foreground hover:text-foreground hover:bg-accent"
+        >
+          <ChevronLeft className="size-3.5" />
+          <span
+            className={`inline-block size-1.5 ${
+              isReady
+                ? "bg-emerald-500"
+                : isWorking
+                  ? "bg-amber-500 animate-pulse"
+                  : "bg-muted-foreground"
+            }`}
+          />
+          <span
+            className="font-mono text-[10px] font-medium uppercase tracking-[0.2em] text-foreground"
+            style={{ writingMode: "vertical-rl" }}
+          >
+            Agent
+          </span>
+        </button>
+      )}
+
+      <section
+        className={`flex h-full flex-col bg-panel transition-[width] duration-200 ${open ? "w-[360px]" : "w-0 overflow-hidden"}`}
+        aria-hidden={!open}
+      >
       <header className="flex items-center justify-between border-b border-border px-4 py-3">
         <div className="flex items-center gap-2">
           <Power className="size-3.5 text-muted-foreground" />
@@ -332,6 +385,7 @@ export default function OpenAgentPanel() {
           </Button>
         </div>
       </div>
-    </section>
+      </section>
+    </aside>
   );
 }

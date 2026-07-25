@@ -12,6 +12,59 @@
       "sourceType": "github",
       "skillPath": "skills/supabase-postgres-best-practices/SKILL.md",
       "computedHash": "768f9a7532780a72165f79c91d71a4bf82abd9ed31045238c2acb40322fc1d0a"
+    },
+    "impeccable": {
+      "source": "pbakaus/impeccable",
+      "sourceType": "github",
+      "skillPath": ".opencode/skills/impeccable/SKILL.md",
+      "computedHash": "d61672b057c247542e8a4884d68794e5b0cc1198446d23aae0321180c23f1521",
+      "installMethod": "npx impeccable install",
+      "installedPath": ".agents/skills/impeccable/"
+    },
+    "shadcn-ui": {
+      "source": "shadcn-ui/ui",
+      "sourceType": "github",
+      "skillPath": "skills/shadcn-ui/SKILL.md",
+      "computedHash": "1398503e6c38743a1258d1dbb71cccdd7856410fa6b7f68dfbd2d549ae39ebfc",
+      "note": "Hand-crafted skill distilling shadcn/ui design language as plain-HTML components."
+    },
+    "design-tokens": {
+      "source": "frontend-kit/design-tokens",
+      "sourceType": "local",
+      "skillPath": "skills/design-tokens/SKILL.md",
+      "computedHash": "14655b927b64db207687709aba83c45c423cd84ae6d35b723c3bb93ab4bc52c0"
+    },
+    "motion-budget": {
+      "source": "frontend-kit/motion-budget",
+      "sourceType": "local",
+      "skillPath": "skills/motion-budget/SKILL.md",
+      "computedHash": "ca28bedc961c1ce51a0c15747d5216e942237e69374313ad2bfa739bfb7e5adc"
+    },
+    "stack-picker": {
+      "source": "frontend-kit/stack-picker",
+      "sourceType": "local",
+      "skillPath": "skills/stack-picker/SKILL.md",
+      "computedHash": "3512cb24519ffc7a957435cb1d2f60feb2459f3ae5ede84d3c720b57ea72a55a"
+    },
+    "visual-primitives": {
+      "source": "frontend-kit/visual-primitives",
+      "sourceType": "local",
+      "skillPath": "skills/visual-primitives/SKILL.md",
+      "computedHash": "43dfdf829ca12125d69ef5856165055f954174901b80be4a98520fcc6e6fcfc6"
+    },
+    "visual-self-review": {
+      "source": "frontend-kit/visual-self-review",
+      "sourceType": "local",
+      "skillPath": "skills/visual-self-review/SKILL.md",
+      "computedHash": "ea2a27738fe8451a1b9efc1d5a4bc58c8b61e80b923613739f7325060d46fa54"
+    }
+  },
+  "hooks": {
+    "impeccable": {
+      "source": "pbakaus/impeccable",
+      "computedHash": "a11a6c54afc6640fe71225dc1df583bd27a7f97c50178a09202cd95ee594600d",
+      "installedPath": ".agents/hooks.json"
     }
   }
 }
+

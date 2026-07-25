@@ -123,9 +123,15 @@ export default function CanvasViewport({
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
       onPointerCancel={onPointerUp}
-      className={`relative h-full w-full overflow-hidden bg-panel select-none ${
+      className={`relative h-full w-full overflow-hidden select-none ${
         isDragging ? "cursor-grabbing" : "cursor-grab"
       }`}
+      style={{
+        backgroundColor: "rgba(230, 230, 230)",
+        backgroundImage: "radial-gradient(circle, rgba(0,0,0,0.5) 1px, transparent 1.5px)",
+        backgroundSize: "20px 20px",
+        backgroundPosition: "0 0",
+      }}
     >
       {showGrid ? <GridOverlay /> : null}
       <div
@@ -240,12 +246,11 @@ function GridOverlay() {
   return (
     <div
       aria-hidden
-      className="pointer-events-none absolute inset-0 opacity-60"
+      className="pointer-events-none absolute inset-0"
       style={{
-        backgroundImage:
-          "linear-gradient(to right, var(--border) 1px, transparent 1px), linear-gradient(to bottom, var(--border) 1px, transparent 1px)",
-        backgroundSize: "24px 24px",
-        backgroundPosition: "center center",
+        backgroundImage: "radial-gradient(circle, rgba(0,0,0,0.5) 1px, transparent 1.5px)",
+        backgroundSize: "20px 20px",
+        backgroundPosition: "0 0",
       }}
     />
   );

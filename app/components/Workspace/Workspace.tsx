@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { Button } from "@/components/ui/button";
 import ChatPanel, { ChatMessage } from "../ChatPanel/ChatPanel";
 import CanvasViewport from "../CanvasViewport/CanvasViewport";
 import SettingsPanel from "../SettingsPanel/SettingsPanel";
@@ -14,75 +15,28 @@ const STARTER: ChatMessage[] = [
   },
 ];
 
-function buildHtml(
-  prompt: string,
-  theme: "light" | "auto",
-  styles: {
-    fontFamily: string;
-    fontSize: number;
-    textColor: string;
-    backgroundColor: string;
-  },
-): string {
-  const escaped = prompt.replace(/[<>]/g, "");
-  const fontFamilies: Record<string, string> = {
-    system: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
-    serif: 'Georgia, "Times New Roman", serif',
-    mono: '"SFMono-Regular", Consolas, "Liberation Mono", monospace',
-  };
-  const fontFamily = fontFamilies[styles.fontFamily] ?? fontFamilies.system;
-  const darkStyles = `
-    body { background: #0a0a0a; color: #ededed; }
-    .nav a, .nav, .tagline, .lead, .card h3, .card p, footer { color: inherit; }
-    .card { background: #111; border-color: #262626; }
-  `;
-  const themeCss = theme === "auto" ? `@media (prefers-color-scheme: dark) { ${darkStyles} }` : "";
-  return `<!doctype html>
-<html><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
-<style>
-  * { box-sizing: border-box; margin: 0; padding: 0; border-radius: 0; box-shadow: none; }
-  body { font-family: ${fontFamily}; font-size: ${styles.fontSize}px; background: ${styles.backgroundColor}; color: ${styles.textColor}; padding: 0; }
-  .nav { display: flex; align-items: center; justify-content: space-between; padding: 20px 48px; border-bottom: 1px solid #e5e5e5; }
-  .nav a { color: inherit; text-decoration: none; margin-left: 24px; font-size: 0.875em; }
-  .brand { font-weight: 700; letter-spacing: -0.02em; }
-  .hero { padding: 96px 48px; max-width: 1100px; }
-  .tagline { font-size: 11px; text-transform: uppercase; letter-spacing: 0.18em; color: #71717a; margin-bottom: 16px; }
-  .lead { font-size: 44px; font-weight: 700; letter-spacing: -0.02em; line-height: 1.1; max-width: 720px; }
-  .prompt { margin-top: 24px; color: #71717a; font-size: 14px; max-width: 600px; }
-  .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; padding: 0 48px 96px; max-width: 1100px; }
-  .card { border: 1px solid #e5e5e5; padding: 24px; background: #fff; }
-  .card h3 { font-size: 14px; margin-bottom: 8px; }
-  .card p { font-size: 13px; color: #71717a; line-height: 1.5; }
-  footer { padding: 32px 48px; border-top: 1px solid #e5e5e5; font-size: 12px; color: #71717a; }
-  .cta { display: inline-block; margin-top: 24px; background: #18181b; color: #fff; padding: 10px 16px; font-size: 13px; text-decoration: none; }
-  ${themeCss}
-</style></head>
-<body>
-  <nav class="nav">
-    <div class="brand">agad</div>
-    <div>
-      <a href="#">Work</a>
-      <a href="#">About</a>
-      <a href="#">Contact</a>
-    </div>
-  </nav>
-  <section class="hero">
-    <div class="tagline">Generated from your prompt</div>
-    <h1 class="lead">${escaped || "A new website, built from text."}</h1>
-    <p class="prompt">Prompt: "${escaped}"</p>
-    <a class="cta" href="#">Get started</a>
-  </section>
-  <section class="grid">
-    <div class="card"><h3>Fast</h3><p>Rendered instantly from your description.</p></div>
-    <div class="card"><h3>Editable</h3><p>Refine by chatting — every message updates the page.</p></div>
-    <div class="card"><h3>Responsive</h3><p>Preview across desktop, tablet, and mobile.</p></div>
-  </section>
-  <footer>© agad — generated ${new Date().toLocaleTimeString()}</footer>
-</body></html>`;
-}
-
 type Device = "desktop" | "tablet" | "mobile";
 type Theme = "light" | "auto";
+
+type PollResponse = {
+  assistantText?: string;
+  html?: string | null;
+  hasHtml?: boolean;
+  error?: string;
+};
+
+type SendResponse = {
+  sessionId?: string;
+  messageId?: string;
+  error?: string;
+};
+
+type SaveResponse = {
+  id?: string;
+  htmlUrl?: string;
+  screenshotUrl?: string | null;
+  error?: string;
+};
 
 export default function Workspace() {
   const [messages, setMessages] = useState<ChatMessage[]>(STARTER);
@@ -97,13 +51,89 @@ export default function Workspace() {
   const [textColor, setTextColor] = useState("#18181b");
   const [backgroundColor, setBackgroundColor] = useState("#ffffff");
 
-  const pageStyles = { fontFamily, fontSize, textColor, backgroundColor };
+  const [lastPrompt, setLastPrompt] = useState<string>("");
+  const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">(
+    "idle",
+  );
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [savedUrl, setSavedUrl] = useState<string | null>(null);
+
+  const cancelledRef = useRef(false);
+
+  useEffect(() => {
+    return () => {
+      cancelledRef.current = true;
+    };
+  }, []);
 
   const generate = async (prompt: string) => {
     setIsGenerating(true);
-    await new Promise((r) => setTimeout(r, 700));
-    setHtml(buildHtml(prompt, theme, pageStyles));
-    setIsGenerating(false);
+    cancelledRef.current = false;
+    try {
+      const sendRes = await fetch("/api/pages/send", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ prompt }),
+      });
+      const sendJson = (await sendRes.json().catch(() => ({}))) as SendResponse;
+      if (!sendRes.ok || !sendJson.sessionId) {
+        const err = sendJson.error ?? `send failed (${sendRes.status})`;
+        setMessages((m) => [
+          ...m,
+          { id: `a-${Date.now()}`, role: "assistant", content: `Error: ${err}` },
+        ]);
+        return;
+      }
+
+      const sessionId = sendJson.sessionId;
+      const deadline = Date.now() + 5 * 60 * 1000;
+      let lastText = "";
+      while (!cancelledRef.current && Date.now() < deadline) {
+        const pollRes = await fetch(
+          `/api/pages/poll?sessionId=${encodeURIComponent(sessionId)}&wait=1`,
+          { cache: "no-store" },
+        );
+        const pollJson = (await pollRes.json().catch(() => ({}))) as PollResponse;
+        if (pollJson.html && pollJson.html !== html) {
+          setHtml(pollJson.html);
+        }
+        if (pollJson.assistantText) {
+          lastText = pollJson.assistantText;
+        }
+        if (pollJson.html) {
+          break;
+        }
+        await new Promise((r) => setTimeout(r, 1500));
+      }
+      const finalRes = await fetch(
+        `/api/pages/poll?sessionId=${encodeURIComponent(sessionId)}`,
+        { cache: "no-store" },
+      );
+      const finalJson = (await finalRes.json().catch(() => ({}))) as PollResponse;
+      if (finalJson.html) setHtml(finalJson.html);
+      const text = finalJson.assistantText ?? lastText;
+      setMessages((m) => [
+        ...m,
+        {
+          id: `a-${Date.now()}`,
+          role: "assistant",
+          content: text?.trim()
+            ? text.trim()
+            : "Done. The page is in the canvas — tweak settings on the right to refine.",
+        },
+      ]);
+    } catch (err) {
+      setMessages((m) => [
+        ...m,
+        {
+          id: `a-${Date.now()}`,
+          role: "assistant",
+          content: `Error: ${err instanceof Error ? err.message : String(err)}`,
+        },
+      ]);
+    } finally {
+      setIsGenerating(false);
+    }
   };
 
   const handleSend = (text: string) => {
@@ -113,21 +143,38 @@ export default function Workspace() {
       content: text,
     };
     setMessages((m) => [...m, userMsg]);
-    generate(text).then(() => {
-      setMessages((m) => [
-        ...m,
-        {
-          id: `a-${Date.now()}`,
-          role: "assistant",
-          content: `Done. I generated a page for: "${text}". Adjust settings on the right to preview on another device.`,
-        },
-      ]);
-    });
+    setLastPrompt(text);
+    setSaveState("idle");
+    setSavedUrl(null);
+    void generate(text);
   };
 
-  const updatePageStyles = (next: Partial<typeof pageStyles>) => {
-    const lastUser = [...messages].reverse().find((message) => message.role === "user");
-    if (lastUser) setHtml(buildHtml(lastUser.content, theme, { ...pageStyles, ...next }));
+  const handleSave = async () => {
+    if (!html) return;
+    setSaveState("saving");
+    setSaveError(null);
+    try {
+      const res = await fetch("/api/pages/save", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          html,
+          prompt: lastPrompt,
+          title: lastPrompt,
+        }),
+      });
+      const json = (await res.json().catch(() => ({}))) as SaveResponse;
+      if (!res.ok || json.error) {
+        setSaveState("error");
+        setSaveError(json.error ?? `save failed (${res.status})`);
+        return;
+      }
+      setSaveState("saved");
+      setSavedUrl(json.htmlUrl ?? null);
+    } catch (err) {
+      setSaveState("error");
+      setSaveError(err instanceof Error ? err.message : String(err));
+    }
   };
 
   return (
@@ -140,6 +187,31 @@ export default function Workspace() {
         />
       </div>
       <main className="relative flex min-w-0 flex-1 flex-col">
+        <div className="flex items-center justify-end gap-2 border-b border-border bg-panel px-3 py-2">
+          {saveState === "saved" && savedUrl ? (
+            <a
+              href={savedUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="font-mono text-[10px] uppercase tracking-wider text-emerald-600 hover:underline"
+            >
+              saved — open
+            </a>
+          ) : null}
+          {saveState === "error" && saveError ? (
+            <span className="font-mono text-[10px] uppercase tracking-wider text-destructive">
+              {saveError}
+            </span>
+          ) : null}
+          <Button
+            size="xs"
+            variant="outline"
+            onClick={handleSave}
+            disabled={!html || isGenerating || saveState === "saving"}
+          >
+            {saveState === "saving" ? "Saving…" : "Save to Supabase"}
+          </Button>
+        </div>
         <CanvasViewport
           html={html}
           device={device}
@@ -152,31 +224,15 @@ export default function Workspace() {
         width={settingsWidth}
         onWidthChange={setSettingsWidth}
         theme={theme}
-        onThemeChange={(nextTheme) => {
-          setTheme(nextTheme);
-          const lastUser = [...messages].reverse().find((message) => message.role === "user");
-          if (lastUser) setHtml(buildHtml(lastUser.content, nextTheme, pageStyles));
-        }}
+        onThemeChange={setTheme}
         fontFamily={fontFamily}
-        onFontFamilyChange={(value) => {
-          setFontFamily(value);
-          updatePageStyles({ fontFamily: value });
-        }}
+        onFontFamilyChange={setFontFamily}
         fontSize={fontSize}
-        onFontSizeChange={(value) => {
-          setFontSize(value);
-          updatePageStyles({ fontSize: value });
-        }}
+        onFontSizeChange={setFontSize}
         textColor={textColor}
-        onTextColorChange={(value) => {
-          setTextColor(value);
-          updatePageStyles({ textColor: value });
-        }}
+        onTextColorChange={setTextColor}
         backgroundColor={backgroundColor}
-        onBackgroundColorChange={(value) => {
-          setBackgroundColor(value);
-          updatePageStyles({ backgroundColor: value });
-        }}
+        onBackgroundColorChange={setBackgroundColor}
       />
     </div>
   );
