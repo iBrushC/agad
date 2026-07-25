@@ -15,12 +15,14 @@ type ChatPanelProps = {
   messages: ChatMessage[];
   onSend: (text: string) => void;
   isGenerating: boolean;
+  progressSlot?: React.ReactNode;
 };
 
 export default function ChatPanel({
   messages,
   onSend,
   isGenerating,
+  progressSlot,
 }: ChatPanelProps) {
   const [draft, setDraft] = useState("");
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -68,6 +70,10 @@ export default function ChatPanel({
           )}
         </div>
       </div>
+
+      {progressSlot ? (
+        <div className="border-t border-border bg-panel p-3">{progressSlot}</div>
+      ) : null}
 
       <form
         onSubmit={handleSubmit}

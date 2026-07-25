@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 
-import { getOrCreateAgent } from "@/lib/sandbox/agent";
 import { getUserId } from "@/lib/supabase/user";
 
 export async function POST() {
@@ -8,9 +7,17 @@ export async function POST() {
   if (!userId) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
-  const result = await getOrCreateAgent(userId);
-  if (!result.ok) {
-    return NextResponse.json({ error: result.error }, { status: 500 });
-  }
-  return NextResponse.json({ state: result.state });
+  return NextResponse.json({
+    state: {
+      status: "ready",
+      sandboxId: null,
+      sandboxName: "agad-direct",
+      url: null,
+      password: null,
+      snapshotId: null,
+      error: null,
+      startedAt: Date.now(),
+      expiresAt: null,
+    },
+  });
 }

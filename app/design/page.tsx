@@ -1,14 +1,8 @@
-import { getOrCreateAgent } from "@/lib/sandbox/agent";
-import { getUserId } from "@/lib/supabase/user";
 import Link from "next/link";
 import OpenAgentPanel from "../components/OpenAgentPanel/OpenAgentPanel";
 import Workspace from "../components/Workspace/Workspace";
 
 export default async function DesignPage() {
-  const userId = await getUserId();
-  if (userId) {
-    void getOrCreateAgent(userId);
-  }
   return (
     <div className="flex h-screen w-full flex-col bg-background">
       <nav className="flex shrink-0 items-center justify-between border-b border-[var(--border)] px-6 py-2">

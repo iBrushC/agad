@@ -116,3 +116,70 @@ export async function waitForTurnIdle(
   }
   return lastText;
 }
+
+export type SessionActivity = {
+  toolCount: number;
+  lastTool: string | null;
+  lastActivity: string | null;
+  textLength: number;
+  inProgress: boolean;
+};
+
+function describePart(part: { type: string; [k: string]: unknown }): string | null {
+  const t = part.type;
+  if (t === "text") return null;
+  const toolName =
+    (typeof part.tool === "string" && part.tool) ||
+    (typeof part.name === "string" && part.name) ||
+    (typeof part.toolName === "string" && part.toolName) ||
+    null;
+  const args = (part.args ?? part.input ?? part.parameters) as
+    | Record<string, unknown>
+    | undefined;
+  let hint = "";
+  if (args && typeof args === "object") {
+    const path =
+      (typeof args.filePath === "string" && args.filePath) ||
+      (typeof args.path === "string" && args.path) ||
+      (typeof args.file === "string" && args.file) ||
+      null;
+    const cmd =
+      (typeof args.command === "string" && args.command) ||
+      (typeof args.cmd === "string" && args.cmd) ||
+      null;
+    if (path) hint = ` ${path}`;
+    else if (cmd) hint = ` ${cmd.length > 40 ? `${cmd.slice(0, 40)}…` : cmd}`;
+  }
+  return toolName ? `${toolName}${hint}` : t;
+}
+
+export async function getSessionActivity(
+  userId: string,
+  sessionId: string,
+): Promise<SessionActivity> {
+  const msgs = await getMessages(userId, sessionId);
+  let toolCount = 0;
+  let lastTool: string | null = null;
+  let lastActivity: string | null = null;
+  let textLength = 0;
+  let inProgress = false;
+  for (const msg of msgs) {
+    if (msg.role !== "assistant") continue;
+    const status = (msg as { info?: { time?: { completed?: number } } }).info?.time?.completed;
+    const completed = typeof status === "number" && status > 0;
+    if (!completed) inProgress = true;
+    for (const part of msg.parts ?? []) {
+      if (part.type === "text") {
+        textLength += (part as { type: "text"; text: string }).text.length;
+        continue;
+      }
+      toolCount += 1;
+      const label = describePart(part as { type: string; [k: string]: unknown });
+      if (label) {
+        lastTool = label;
+        if (!completed) lastActivity = label;
+      }
+    }
+  }
+  return { toolCount, lastTool, lastActivity, textLength, inProgress };
+}

@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 
-import { screenshotProject } from "@/lib/sandbox/agent";
 import { createClient } from "@/lib/supabase/server";
 import { getUserId } from "@/lib/supabase/user";
 
@@ -23,35 +22,19 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "invalid body" }, { status: 400 });
   }
 
-  let { html } = body;
-  const { prompt, title } = body;
-
-  const supabase = await createClient();
-
-  let screenshot: Buffer | null = null;
-  if (!html) {
-    const rendered = await screenshotProject(userId).catch(() => null);
-    if (rendered) {
-      html = rendered.html;
-      screenshot = rendered.png;
-    }
-  } else {
-    const rendered = await screenshotProject(userId).catch(() => null);
-    if (rendered) screenshot = rendered.png;
-  }
-
+  const html = body.html?.trim();
   if (!html) {
     return NextResponse.json(
-      { error: "no html available; agent has not written index.html yet" },
+      { error: "no html available; agent has not finished generating yet" },
       { status: 409 },
     );
   }
 
+  const supabase = await createClient();
   const pageId = crypto.randomUUID();
-  const safeTitle = (title ?? prompt ?? "Untitled").slice(0, 120);
+  const safeTitle = (body.title ?? body.prompt ?? "Untitled").slice(0, 120);
 
   const htmlPath = `${userId}/${pageId}.html`;
-  const pngPath = screenshot ? `${userId}/${pageId}.png` : null;
 
   const htmlUpload = await supabase.storage
     .from(BUCKET)
@@ -67,26 +50,7 @@ export async function POST(req: Request) {
     );
   }
 
-  if (screenshot && pngPath) {
-    const pngUpload = await supabase.storage
-      .from(BUCKET)
-      .upload(pngPath, screenshot, {
-        contentType: "image/png",
-        upsert: false,
-      });
-    if (pngUpload.error) {
-      return NextResponse.json(
-        { error: `screenshot upload failed: ${pngUpload.error.message}` },
-        { status: 500 },
-      );
-    }
-  }
-
-  const htmlBucket = supabase.storage.from(BUCKET);
-  const { data: htmlUrl } = htmlBucket.getPublicUrl(htmlPath);
-  const { data: pngUrl } = pngPath
-    ? htmlBucket.getPublicUrl(pngPath)
-    : { data: { publicUrl: null } };
+  const { data: htmlUrl } = supabase.storage.from(BUCKET).getPublicUrl(htmlPath);
 
   const insert = await supabase
     .from("pages")
@@ -94,11 +58,11 @@ export async function POST(req: Request) {
       id: pageId,
       user_id: userId,
       title: safeTitle,
-      prompt: prompt ?? null,
+      prompt: body.prompt ?? null,
       html_path: htmlPath,
-      screenshot_path: pngPath,
+      screenshot_path: null,
       html_url: htmlUrl.publicUrl,
-      screenshot_url: pngUrl.publicUrl,
+      screenshot_url: null,
     })
     .select("id")
     .single();
@@ -113,6 +77,6 @@ export async function POST(req: Request) {
   return NextResponse.json({
     id: insert.data.id,
     htmlUrl: htmlUrl.publicUrl,
-    screenshotUrl: pngUrl.publicUrl,
+    screenshotUrl: null,
   });
 }

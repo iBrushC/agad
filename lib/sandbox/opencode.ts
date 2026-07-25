@@ -114,7 +114,7 @@ export async function readOpenCodeLog(sandbox: Sandbox, maxBytes = 4000): Promis
 export async function waitForOpenCodeHealthy(
   sandbox: Sandbox,
   password: string,
-  timeoutMs = 30_000,
+  timeoutMs = 60_000,
 ): Promise<{ healthy: boolean; lastError?: string }> {
   const auth = Buffer.from(`opencode:${password}`).toString("base64");
   const url = sandbox.domain(OPENCODE_PORT);
@@ -135,7 +135,7 @@ export async function waitForOpenCodeHealthy(
     } catch (err) {
       lastError = err instanceof Error ? err.message : String(err);
     }
-    await new Promise((r) => setTimeout(r, 500));
+    await new Promise((r) => setTimeout(r, 1000));
   }
   return { healthy: false, lastError };
 }
@@ -212,13 +212,13 @@ export async function installImageGenerationSkill(sandbox: Sandbox): Promise<voi
     throw new Error(`image-generation skill install failed: ${err.slice(0, 500)}`);
   }
 
-  const stamp = await sandbox.runCommand({
-    cmd: "bash",
-    args: ["-c", `date -u +%Y-%m-%dT%H:%M:%SZ > ${IMAGE_GEN_BOOTSTRAP_MARKER}`],
-  });
-  if (stamp.exitCode !== 0) {
-    throw new Error("failed to write image-generation bootstrap marker");
-  }
+  const stamp = new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
+  await sandbox.writeFiles([
+    {
+      path: IMAGE_GEN_BOOTSTRAP_MARKER,
+      content: Buffer.from(stamp),
+    },
+  ]);
 }
 
 export async function installMotion(sandbox: Sandbox): Promise<void> {

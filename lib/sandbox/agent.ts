@@ -3,8 +3,10 @@ import { v4 as uuid } from "uuid";
 
 import {
   OPENCODE_PORT,
+  PROJECT_DIR,
   PROJECT_INDEX_HTML,
   basicAuthHeader,
+  ensureProjectDir,
   installImageGenerationSkill,
   installMotion,
   installOpenCode,
@@ -23,7 +25,6 @@ import type { AgentActionResult, AgentState } from "./types";
 const HOBBY_MAX_TIMEOUT_MS = 45 * 60 * 1000;
 const DEFAULT_TIMEOUT_MS = HOBBY_MAX_TIMEOUT_MS;
 const INSTALL_TIMEOUT_MS = HOBBY_MAX_TIMEOUT_MS;
-const SNAPSHOT_SANDBOX_NAME = "agad-agent-base-sandbox";
 
 function requireEnv(name: string): string {
   const value = process.env[name];
@@ -35,11 +36,6 @@ function requireEnv(name: string): string {
 
 function readOpenRouterKey(): string {
   return requireEnv("OPENROUTER_API_KEY");
-}
-
-function readSnapshotId(): string | undefined {
-  const v = process.env.OPENCODE_SNAPSHOT_ID;
-  return v && v.length > 0 ? v : undefined;
 }
 
 async function writeOpenCodeAssets(sandbox: Sandbox): Promise<void> {
@@ -58,62 +54,50 @@ async function writeOpenCodeAssets(sandbox: Sandbox): Promise<void> {
   }
 }
 
+async function installBaseSkills(sandbox: Sandbox): Promise<void> {
+  await installOpenCode(sandbox);
+  await writeOpenCodeAssets(sandbox);
+  await writeOpenCodeSecrets(sandbox, readOpenRouterKey());
+  await installImageGenerationSkill(sandbox);
+  await installMotion(sandbox);
+}
+
 async function runCreatePipeline(userId: string): Promise<AgentState> {
   const name = state.sandboxNameForUser(userId);
-  console.log(`[agent] runCreatePipeline start userId=${userId} name=${name} snapshotId=${readSnapshotId() ?? "<none>"}`);
-  state.setStatus(userId, "creating");
+  console.log(`[agent] runCreatePipeline start userId=${userId} name=${name}`);
+  await state.setStatus(userId, "creating");
 
-  const snapshotId = readSnapshotId();
-  const sandbox = snapshotId
-    ? await Sandbox.create({
-        name,
-        source: { type: "snapshot", snapshotId },
-        ports: [OPENCODE_PORT],
-        timeout: INSTALL_TIMEOUT_MS,
-        resources: { vcpus: 2 },
-      })
-    : await Sandbox.getOrCreate({
-        name,
-        runtime: "node24",
-        ports: [OPENCODE_PORT],
-        timeout: INSTALL_TIMEOUT_MS,
-        resources: { vcpus: 2 },
-        onCreate: async (sbx) => {
-          state.setStatus(userId, "installing");
-          await installOpenCode(sbx);
-          await writeOpenCodeAssets(sbx);
-          await writeOpenCodeSecrets(sbx, readOpenRouterKey());
-          await installImageGenerationSkill(sbx);
-          await installMotion(sbx);
-        },
-      });
+  const existing = await state.get(userId);
+  const finalPassword = existing.password ?? uuid().replace(/-/g, "");
 
-  if (!snapshotId) {
-    state.setStatus(userId, "installing");
-    await installOpenCode(sandbox);
-    await writeOpenCodeAssets(sandbox);
-    await writeOpenCodeSecrets(sandbox, readOpenRouterKey());
-    await installImageGenerationSkill(sandbox);
-    await installMotion(sandbox);
-  }
+  const sandbox = await Sandbox.getOrCreate({
+    name,
+    runtime: "node24",
+    ports: [OPENCODE_PORT],
+    timeout: INSTALL_TIMEOUT_MS,
+    resources: { vcpus: 2 },
+    onCreate: async (sbx) => {
+      await ensureProjectDir(sbx);
+      await installBaseSkills(sbx);
+    },
+  });
 
-  const password = state.get(userId).password ?? uuid().replace(/-/g, "");
-  state.setStatus(userId, "starting", {
+  await state.setStatus(userId, "starting", {
     sandboxId: name,
-    password,
+    password: finalPassword,
     startedAt: Date.now(),
     expiresAt: sandbox.expiresAt ? sandbox.expiresAt.toISOString() : null,
   });
 
   console.log(`[agent] starting opencode server userId=${userId} port=${OPENCODE_PORT}`);
-  await startOpenCodeServer(sandbox, password);
-  const { healthy, lastError } = await waitForOpenCodeHealthy(sandbox, password, 30_000);
+  await startOpenCodeServer(sandbox, finalPassword);
+  const { healthy, lastError } = await waitForOpenCodeHealthy(sandbox, finalPassword, 90_000);
   console.log(`[agent] opencode healthy=${healthy} userId=${userId} lastError=${lastError ?? "<none>"}`);
   if (!healthy) {
     const log = await readOpenCodeLog(sandbox);
     console.error(`[agent] opencode diagnostics userId=${userId}\n${log}`);
     const detail = `opencode server did not become healthy: ${lastError ?? "timeout"}\n${log || "<no diagnostics captured>"}`;
-    state.setError(userId, detail);
+    await state.setError(userId, detail);
     throw new Error(detail);
   }
 
@@ -125,40 +109,41 @@ async function runCreatePipeline(userId: string): Promise<AgentState> {
 
   const url = sandbox.domain(OPENCODE_PORT);
   console.log(`[agent] pipeline ready userId=${userId} url=${url}`);
-  return state.setStatus(userId, "ready", { url, password });
+  return state.setStatus(userId, "ready", { url, password: finalPassword });
 }
 
 export async function getOrCreateAgent(userId: string): Promise<AgentActionResult> {
   try {
-    const entry = state.ensure(userId);
+    const entry = await state.ensure(userId);
     const current = entry.state;
     if (current.status === "ready" && current.url && current.password) {
       console.log(`[agent] getOrCreateAgent hit ready state for userId=${userId}`);
       return { ok: true, state: current };
     }
-    if (entry.promise) {
+    const existingPromise = await state.getPromise(userId);
+    if (existingPromise) {
       console.log(`[agent] getOrCreateAgent awaiting in-flight pipeline for userId=${userId} status=${current.status}`);
-      const next = await entry.promise;
+      const next = await existingPromise;
       return settleAfterPipeline(userId, next);
     }
     console.log(`[agent] getOrCreateAgent starting pipeline for userId=${userId} status=${current.status}`);
-    const promise = runCreatePipeline(userId).catch((err) => {
-      const msg = err instanceof Error ? err.message : String(err);
-      const anyErr = err as Error & {
-        json?: unknown;
-        text?: string;
-        response?: { status?: number; url?: string };
-      };
-      console.error(
-        `[agent] pipeline threw for userId=${userId}: ${msg} | status=${anyErr.response?.status ?? "?"} url=${anyErr.response?.url ?? "?"} json=${JSON.stringify(anyErr.json)?.slice(0, 600) ?? "<none>"} text=${anyErr.text?.slice(0, 600) ?? "<none>"}`,
-      );
-      console.error(`[agent] pipeline stack: ${err instanceof Error ? err.stack : "<no stack>"}`);
-      state.setError(userId, msg);
-      return state.get(userId);
-    });
-    state.setPromise(userId, promise);
+    const promise = state
+      .getOrAdoptPromise(userId, () => runCreatePipeline(userId))
+      .catch((err) => {
+        const msg = err instanceof Error ? err.message : String(err);
+        const anyErr = err as Error & {
+          json?: unknown;
+          text?: string;
+          response?: { status?: number; url?: string };
+        };
+        console.error(
+          `[agent] pipeline threw for userId=${userId}: ${msg} | status=${anyErr.response?.status ?? "?"} url=${anyErr.response?.url ?? "?"} json=${JSON.stringify(anyErr.json)?.slice(0, 600) ?? "<none>"} text=${anyErr.text?.slice(0, 600) ?? "<none>"}`,
+        );
+        console.error(`[agent] pipeline stack: ${err instanceof Error ? err.stack : "<no stack>"}`);
+        void state.setError(userId, msg);
+        return state.get(userId);
+      });
     const next = await promise;
-    state.setPromise(userId, null);
     return settleAfterPipeline(userId, next);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
@@ -182,14 +167,17 @@ function settleAfterPipeline(userId: string, next: AgentState): AgentActionResul
 
 export async function stopAgent(userId: string): Promise<AgentActionResult> {
   try {
-    const current = state.get(userId);
+    const current = await state.get(userId);
     if (!current.sandboxName) {
-      return { ok: true, state: state.setStatus(userId, "stopped") };
+      return { ok: true, state: await state.setStatus(userId, "stopped") };
     }
-    state.setStatus(userId, "stopping");
+    await state.setStatus(userId, "stopping");
     const sandbox = await Sandbox.get({ name: current.sandboxName });
     await sandbox.stop();
-    return { ok: true, state: state.setStatus(userId, "stopped", { url: null }) };
+    return {
+      ok: true,
+      state: await state.setStatus(userId, "stopped", { url: null }),
+    };
   } catch (err) {
     return {
       ok: false,
@@ -203,7 +191,7 @@ export async function extendAgent(
   durationMs: number = DEFAULT_TIMEOUT_MS,
 ): Promise<AgentActionResult> {
   try {
-    const current = state.get(userId);
+    const current = await state.get(userId);
     if (!current.sandboxName) {
       return { ok: false, error: "agent not started" };
     }
@@ -212,7 +200,7 @@ export async function extendAgent(
     const next = await Sandbox.get({ name: current.sandboxName });
     return {
       ok: true,
-      state: state.setStatus(userId, "ready", {
+      state: await state.setStatus(userId, "ready", {
         expiresAt: next.expiresAt ? next.expiresAt.toISOString() : null,
       }),
     };
@@ -229,7 +217,7 @@ export async function getAgentState(userId: string): Promise<AgentState | null> 
 }
 
 export async function readAgentLogs(userId: string): Promise<string | null> {
-  const current = state.get(userId);
+  const current = await state.get(userId);
   if (!current.sandboxName) {
     return null;
   }
@@ -246,7 +234,7 @@ export async function proxyToOpenCode(
   userId: string,
   request: Request,
 ): Promise<Response | null> {
-  const current = state.get(userId);
+  const current = await state.get(userId);
   if (!current.url || !current.password) {
     console.warn(
       `[agent] proxyToOpenCode missing url/password userId=${userId} status=${current.status} hasUrl=${!!current.url} hasPassword=${!!current.password} error=${current.error ?? "<none>"}`,
@@ -271,36 +259,8 @@ export async function proxyToOpenCode(
   return fetch(target, init);
 }
 
-export async function snapshotOpenCodeBaseSandbox(): Promise<{
-  ok: boolean;
-  snapshotId?: string;
-  error?: string;
-}> {
-  try {
-    const sandbox = await Sandbox.create({
-      name: SNAPSHOT_SANDBOX_NAME,
-      runtime: "node24",
-      ports: [OPENCODE_PORT],
-      timeout: INSTALL_TIMEOUT_MS,
-      resources: { vcpus: 2 },
-    });
-    await installOpenCode(sandbox);
-    await writeOpenCodeAssets(sandbox);
-    await writeOpenCodeSecrets(sandbox, readOpenRouterKey());
-    await installImageGenerationSkill(sandbox);
-    await installMotion(sandbox);
-    const snap = await sandbox.snapshot();
-    return { ok: true, snapshotId: snap.snapshotId };
-  } catch (err) {
-    return {
-      ok: false,
-      error: err instanceof Error ? err.message : String(err),
-    };
-  }
-}
-
 export async function getSandboxForUser(userId: string): Promise<Sandbox | null> {
-  const current = state.get(userId);
+  const current = await state.get(userId);
   if (!current.sandboxName) return null;
   try {
     return await Sandbox.get({ name: current.sandboxName });
@@ -314,6 +274,59 @@ export async function readProjectHtml(userId: string): Promise<string | null> {
   if (!sandbox) return null;
   const buf = await sandbox.readFileToBuffer({ path: PROJECT_INDEX_HTML });
   return buf ? buf.toString("utf8") : null;
+}
+
+export type GeneratedLines = {
+  total: number;
+  files: { path: string; lines: number }[];
+};
+
+const LINE_COUNTABLE = /\.(html?|css|scss|sass|less|js|jsx|ts|tsx|mjs|cjs|json|md|svg|vue|svelte)$/i;
+
+export async function countGeneratedLines(userId: string): Promise<GeneratedLines> {
+  const empty: GeneratedLines = { total: 0, files: [] };
+  const sandbox = await getSandboxForUser(userId);
+  if (!sandbox) return empty;
+  let listing: { name: string; type: string }[];
+  try {
+    const result = await sandbox.runCommand({
+      cmd: "bash",
+      args: [
+        "-c",
+        `find ${PROJECT_DIR} -maxdepth 3 -type f -not -path '*/node_modules/*' -not -path '*/.cache/*' -printf '%p\\t%y\\n' 2>/dev/null | head -n 200`,
+      ],
+    });
+    if (result.exitCode !== 0) return empty;
+    const raw = await result.stdout();
+    listing = raw
+      .split("\n")
+      .map((l) => l.trim())
+      .filter(Boolean)
+      .map((l) => {
+        const [name, type] = l.split("\t");
+        return { name: name ?? "", type: type ?? "f" };
+      });
+  } catch {
+    return empty;
+  }
+  const files: GeneratedLines["files"] = [];
+  let total = 0;
+  for (const entry of listing) {
+    if (entry.type !== "f") continue;
+    if (!LINE_COUNTABLE.test(entry.name)) continue;
+    try {
+      const buf = await sandbox.readFileToBuffer({ path: entry.name });
+      if (!buf) continue;
+      const text = buf.toString("utf8");
+      const lines = text.length === 0 ? 0 : text.split("\n").length;
+      total += lines;
+      files.push({ path: entry.name, lines });
+    } catch {
+      // ignore unreadable files
+    }
+  }
+  files.sort((a, b) => b.lines - a.lines);
+  return { total, files: files.slice(0, 8) };
 }
 
 export async function screenshotProject(

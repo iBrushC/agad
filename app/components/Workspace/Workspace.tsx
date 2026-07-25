@@ -5,13 +5,21 @@ import { Button } from "@/components/ui/button";
 import ChatPanel, { ChatMessage } from "../ChatPanel/ChatPanel";
 import CanvasViewport from "../CanvasViewport/CanvasViewport";
 import SettingsPanel from "../SettingsPanel/SettingsPanel";
+import NewPageSurvey, {
+  SurveyAnswers,
+} from "../NewPageSurvey/NewPageSurvey";
+import GenerationProgress, {
+  ProgressActivity,
+  ProgressLines,
+  ProgressState,
+} from "../GenerationProgress/GenerationProgress";
 
 const STARTER: ChatMessage[] = [
   {
     id: "seed-1",
     role: "system",
     content:
-      "Describe the website you want to build. I'll generate the page in the canvas.",
+      "Answer the quick survey to kick off a new page, or describe changes to the current page in the chat below.",
   },
 ];
 
@@ -22,6 +30,8 @@ type PollResponse = {
   assistantText?: string;
   html?: string | null;
   hasHtml?: boolean;
+  activity?: ProgressActivity;
+  lines?: ProgressLines;
   error?: string;
 };
 
@@ -37,6 +47,8 @@ type SaveResponse = {
   screenshotUrl?: string | null;
   error?: string;
 };
+
+const EMPTY_PROGRESS: ProgressState = { activity: null, lines: null };
 
 export default function Workspace() {
   const [messages, setMessages] = useState<ChatMessage[]>(STARTER);
@@ -58,7 +70,14 @@ export default function Workspace() {
   const [saveError, setSaveError] = useState<string | null>(null);
   const [savedUrl, setSavedUrl] = useState<string | null>(null);
 
+  const [surveyOpen, setSurveyOpen] = useState(true);
+  const [surveyKey, setSurveyKey] = useState(0);
+  const seenSurveyRef = useRef(false);
+
   const cancelledRef = useRef(false);
+  const [progress, setProgress] = useState<ProgressState>(EMPTY_PROGRESS);
+  const [progressError, setProgressError] = useState<string | null>(null);
+  const [progressStartedAt, setProgressStartedAt] = useState<number | null>(null);
 
   useEffect(() => {
     return () => {
@@ -66,8 +85,13 @@ export default function Workspace() {
     };
   }, []);
 
+
+
   const generate = async (prompt: string) => {
     setIsGenerating(true);
+    setProgress(EMPTY_PROGRESS);
+    setProgressError(null);
+    setProgressStartedAt(Date.now());
     cancelledRef.current = false;
     try {
       const sendRes = await fetch("/api/pages/send", {
@@ -78,6 +102,7 @@ export default function Workspace() {
       const sendJson = (await sendRes.json().catch(() => ({}))) as SendResponse;
       if (!sendRes.ok || !sendJson.sessionId) {
         const err = sendJson.error ?? `send failed (${sendRes.status})`;
+        setProgressError(err);
         setMessages((m) => [
           ...m,
           { id: `a-${Date.now()}`, role: "assistant", content: `Error: ${err}` },
@@ -94,6 +119,15 @@ export default function Workspace() {
           { cache: "no-store" },
         );
         const pollJson = (await pollRes.json().catch(() => ({}))) as PollResponse;
+        if (pollJson.error) {
+          setProgressError(pollJson.error);
+        }
+        if (pollJson.activity || pollJson.lines) {
+          setProgress({
+            activity: pollJson.activity ?? null,
+            lines: pollJson.lines ?? null,
+          });
+        }
         if (pollJson.html && pollJson.html !== html) {
           setHtml(pollJson.html);
         }
@@ -110,6 +144,12 @@ export default function Workspace() {
         { cache: "no-store" },
       );
       const finalJson = (await finalRes.json().catch(() => ({}))) as PollResponse;
+      if (finalJson.activity || finalJson.lines) {
+        setProgress({
+          activity: finalJson.activity ?? null,
+          lines: finalJson.lines ?? null,
+        });
+      }
       if (finalJson.html) setHtml(finalJson.html);
       const text = finalJson.assistantText ?? lastText;
       setMessages((m) => [
@@ -123,12 +163,14 @@ export default function Workspace() {
         },
       ]);
     } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setProgressError(msg);
       setMessages((m) => [
         ...m,
         {
           id: `a-${Date.now()}`,
           role: "assistant",
-          content: `Error: ${err instanceof Error ? err.message : String(err)}`,
+          content: `Error: ${msg}`,
         },
       ]);
     } finally {
@@ -147,6 +189,23 @@ export default function Workspace() {
     setSaveState("idle");
     setSavedUrl(null);
     void generate(text);
+  };
+
+  const handleSurveySubmit = (
+    _answers: SurveyAnswers,
+    composedPrompt: string,
+  ) => {
+    setSurveyOpen(false);
+    handleSend(composedPrompt);
+  };
+
+  const handleSurveyClose = () => {
+    setSurveyOpen(false);
+  };
+
+  const openSurveyFresh = () => {
+    setSurveyKey((k) => k + 1);
+    setSurveyOpen(true);
   };
 
   const handleSave = async () => {
@@ -177,13 +236,39 @@ export default function Workspace() {
     }
   };
 
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    const seed = params.get("prompt")?.trim();
+    if (!seed) return;
+    seenSurveyRef.current = true;
+    queueMicrotask(() => {
+      setSurveyOpen(false);
+      handleSend(seed);
+    });
+  }, []);
+
   return (
     <div className="flex h-full w-full bg-background">
+      <NewPageSurvey
+        key={surveyKey}
+        open={surveyOpen}
+        onClose={handleSurveyClose}
+        onSubmit={handleSurveySubmit}
+      />
       <div className="w-[340px] shrink-0">
         <ChatPanel
           messages={messages}
           onSend={handleSend}
           isGenerating={isGenerating}
+          progressSlot={
+            <GenerationProgress
+              active={isGenerating}
+              startedAt={progressStartedAt}
+              state={progress}
+              error={progressError}
+            />
+          }
         />
       </div>
       <main className="relative flex min-w-0 flex-1 flex-col">
@@ -203,6 +288,14 @@ export default function Workspace() {
               {saveError}
             </span>
           ) : null}
+          <Button
+            size="xs"
+            variant="outline"
+            onClick={openSurveyFresh}
+            disabled={isGenerating}
+          >
+            New page
+          </Button>
           <Button
             size="xs"
             variant="outline"

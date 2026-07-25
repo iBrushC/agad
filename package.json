@@ -11,7 +11,7 @@
   "dependencies": {
     "@base-ui/react": "^1.6.0",
     "@brightdata/mcp": "^2.11.0",
-    "@opencode-ai/sdk": "^1.18.3",
+    "@openrouter/sdk": "^0.13.65",
     "@supabase/ssr": "^0.12.3",
     "@supabase/supabase-js": "^2.110.7",
     "@vercel/sandbox": "^2.7.0",
